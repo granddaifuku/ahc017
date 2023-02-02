@@ -131,7 +131,6 @@ bool is_finishable(int edges, int days) { return edges <= days * K; }
 vector<int> solve() {
   vector<int> result(M);
   int remain_days = D;
-  int average = (M + D - 1) / D;
 
   // 残っている修理が必要な辺
   vector<int> tmp(M);
@@ -154,11 +153,6 @@ vector<int> solve() {
       if (edges.size() == 0) {
         break;
       }
-      // 期限までに終了可能かつ必要な数を超えていればループを抜ける
-      // if (is_finishable(int(edges.size()), remain_days) &&
-      //     int(repair.size()) >= average) {
-      //   break;
-      // }
 
       int front = edges.front();
       edges.pop();

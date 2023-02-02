@@ -48,8 +48,7 @@ elif [ $1 = "test" ]; then
 		fi
 		./target/release/vis ./in/$file ./out/$file >> ../$SUM 
 	done
-
-	echo "Sum scores"
+	
 	cd ..
 	awk '{sum+=$1}END{print "Sum", sum}' < $SUM
 	rm $SUM
