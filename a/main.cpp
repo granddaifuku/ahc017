@@ -67,61 +67,63 @@ class DisjointSet {
 // ================================================
 
 int N, M, D, K;
+int WEIGHT = 10000;
 
 using P = pair<int, int>;
 
-vector<P> connections;
-
 struct edge {
-  int to;
+  int num;
+  int u;
+  int v;
   int cost;
+
+  bool operator<(const edge& rhs) const {
+    if (cost == rhs.cost) {
+      return num < rhs.num;
+    }
+
+    return cost < rhs.cost;
+  }
 };
 
-vector<int> dist;
-vector<vector<edge>> g;
+vector<edge> g;
 
-void dijkstra(int s) {
-  dist = vector<int>(N, Inf);
-  dist[s] = 0;
-  priority_queue<P, vector<P>, greater<P>> pq;
-  pq.push(P(0, s));
+// 初手に使ったエッジで生成する
+set<int> kruskal(vector<edge>& edges) {
+  set<int> used;
+  DisjointSet dj(N);
+  // sort(edges.begin(), edges.end());
 
-  while (!pq.empty()) {
-    P p = pq.top();
-    pq.pop();
-    int v = p.second;
-    if (dist[v] < p.first) continue;
-
-    rep(i, g[v].size()) {
-      edge e = g[v][i];
-      if (dist[e.to] > dist[v] + e.cost) {
-        dist[e.to] = dist[v] + e.cost;
-        pq.push(P(dist[e.to], e.to));
-      }
+  for (const auto& e : edges) {
+    int num = e.num, u = e.u, v = e.v;
+    if (!dj.isSame(u, v)) {
+      used.insert(num);
+      dj.link(u, v);
     }
   }
+
+  return used;
+}
+
+set<int> weighted_kruskal(const set<int>& unused, int day) {
+  vector<edge> edges(M);
+  int idx = 0;
+  rep(i, M) {
+    // 未使用の辺である
+    if (unused.find(i) != unused.end()) {
+      continue;
+    }
+    edges[idx] = g[idx];
+    idx++;
+  }
+  for (const auto index : unused) {
+    edges[index] = g[index];
+  }
+
+  return kruskal(edges);
 }
 
 // =================================================
-
-// TODO
-// 各エッジがどこを結ぶかを記録する
-// DFSで連結かどうか探索できる
-
-// 道路が接続されているかを確認する
-// Disjoint Set で連結かどうかを確認
-bool is_connected(const set<int>& repair) {
-  DisjointSet dj(N);
-  rep(i, M) {
-    if (repair.find(i) != repair.end()) {
-      continue;
-    }
-    int a = connections[i].first, b = connections[i].second;
-    dj.makeSet(a, b);
-  }
-
-  return dj.getSize(0) == N;
-}
 
 // 残り日数で全ての辺の修理が可能かどうか
 bool is_finishable(int edges, int days) { return edges <= days * K; }
@@ -132,55 +134,57 @@ vector<int> solve() {
   vector<int> result(M);
   int remain_days = D;
 
+  // 修理対象の辺
+  set<int> unfixed;
+  rep(i, M) { unfixed.insert(i); }
+
   // 残っている修理が必要な辺
-  vector<int> tmp(M);
-  iota(tmp.begin(), tmp.end(), 0);
-  auto seed = chrono::system_clock::now().time_since_epoch().count();
-  shuffle(tmp.begin(), tmp.end(), default_random_engine(seed));
-  queue<int> edges;
-  rep(i, M) edges.push(tmp[i]);
-
   rep(day, D) {
+    // 修理対象の辺がない場合は終了
+    if (int(unfixed.size()) == 0) {
+      break;
+    }
     remain_days--;
-    // 今回修復する辺の番号の集合
-    set<int> repair;
 
-    // 既に確認済みの辺を管理する
-    vector<bool> checked(M);
-
-    while (int(repair.size()) < K) {
-      // 修理する辺がなくなったらループを抜ける
-      if (edges.size() == 0) {
-        break;
-      }
-
-      int front = edges.front();
-      edges.pop();
-
-      // TODO この辺りの処理を見直す
-
-      repair.insert(front);
-
-      // 既に同じ日に2度チェックしている場合は修理する辺に追加する
-      if (checked[front]) {
-        // 修理を終わらせられる場合は翌日に進む
-        if (is_finishable((int)edges.size(), remain_days)) {
-          break;
-        }
-        // それ以外ならばさらに辺を追加する
+    // クラスカル法で最小全域木を構成
+    set<int> st = weighted_kruskal(unfixed, day);
+    set<int> fixed = st;
+    // 修理済みの辺を除く
+    for (const auto e : st) {
+      // 未修理の辺の集合に存在したら continue
+      if (unfixed.find(e) != unfixed.end()) {
         continue;
       }
+      fixed.erase(e);
+    }
 
-      // グラフが連結でない場合はその辺は使用しない
-      if (!is_connected(repair)) {
-        repair.erase(front);
-        edges.push(front);
-        checked[front] = true;
+    // 修理可能な辺の数を超えた場合
+    if (int(fixed.size()) > K) {
+      int count = 0;
+      auto iter = fixed.begin();
+      while (count < K) {
+        int e = *iter;
+        result[e] = day + 1;
+        unfixed.erase(e);
+        iter++;
+        count++;
+      }
+    } else {
+      // 今回使用された辺を未使用から取り除く
+      for (const auto& e : fixed) {
+        // 結果に追加
+        result[e] = day + 1;
+        // 未使用から取り除く
+        unfixed.erase(e);
       }
     }
 
-    // 修理する日を登録する
-    for (auto e : repair) {
+    // 予定日までに終了できない場合は、修理対象の辺から追加する
+    while (!is_finishable((int)unfixed.size(), remain_days)) {
+      // 先頭要素を取得
+      auto begin = unfixed.begin();
+      int e = *begin;
+      unfixed.erase(e);
       result[e] = day + 1;
     }
   }
@@ -192,18 +196,13 @@ vector<int> solve() {
 
 void input() {
   cin >> N >> M >> D >> K;
-  g.resize(N);
-  connections.resize(M);
+  g.resize(M);
   rep(i, M) {
     int u, v, w;
     cin >> u >> v >> w;
     u--, v--;
-    connections[i] = {u, v};
-    edge e;
-    e.to = v, e.cost = w;
-    g[u].push_back(e);
-    e.to = u;
-    g[v].push_back(e);
+    edge e = {i, u, v, w};
+    g[i] = e;
   }
   rep(i, N) {
     int _x, _y;
